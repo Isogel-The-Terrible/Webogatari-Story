@@ -1,0 +1,10 @@
+The man slowly smiles.
+
+"You really don't remember me?"
+
+$image image_1.png
+
+He takes one step closer.
+
+>[Step back] (scene_2.txt)
+>[Stay where you are] (scene_3.txt)

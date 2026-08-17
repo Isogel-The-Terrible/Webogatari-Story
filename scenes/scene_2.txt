@@ -1,0 +1,7 @@
+The man slowly smiles.
+
+"You really don't remember me?"
+
+He takes one step closer.
+
+>[Step back] (scene_3.txt)
