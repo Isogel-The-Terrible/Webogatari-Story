@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Text Adventure</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    min-height: 100%;
+}
+
+body {
+    background: #000;
+    color: #fff;
+    font-family: Georgia, serif;
+}
+
+#game {
+    width: 100%;
+    max-width: 1000px;
+    min-height: 100vh;
+
+    margin: auto;
+
+    padding: 60px 40px 100px;
+}
+
+#content {
+    font-size: 22px;
+    line-height: 1.7;
+    text-align: justify;
+}
+
+.text-line {
+    margin-bottom: 20px;
+}
+
+
+/* =========================
+   IMAGE
+========================= */
+
+.scene-image {
+    display: block;
+
+    max-width: 100%;
+    max-height: 60vh;
+
+    margin: 30px auto;
+
+    object-fit: contain;
+
+    opacity: 0;
+
+    transition: opacity 0.8s ease;
+}
+
+.scene-image.loaded {
+    opacity: 1;
+}
+
+
+/* =========================
+   OPTIONS
+========================= */
+
+#choices {
+    margin-top: 40px;
+
+    display: flex;
+    flex-direction: column;
+
+    gap: 12px;
+}
+
+.choice {
+    width: 100%;
+
+    background: transparent;
+
+    color: #fff;
+
+    border: 1px solid transparent;
+
+    padding: 12px 16px;
+
+    font-family: inherit;
+    font-size: 21px;
+
+    text-align: left;
+
+    cursor: pointer;
+
+    transition:
+        background 0.15s,
+        color 0.15s;
+}
+
+.choice:hover {
+    background: #fff;
+    color: #000;
+}
+
+
+/* =========================
+   CONTROLS
+========================= */
+
+#controls {
+    position: fixed;
+
+    right: 15px;
+    bottom: 15px;
+
+    display: flex;
+
+    gap: 8px;
+}
+
+#controls button {
+    background: #000;
+
+    color: #777;
+
+    border: 1px solid #333;
+
+    padding: 7px 12px;
+
+    cursor: pointer;
+
+    font-family: inherit;
+}
+
+#controls button:hover {
+    color: #fff;
+    border-color: #fff;
+}
+
+#controls button:disabled {
+    color: #333;
+    border-color: #222;
+    cursor: default;
+}
+
+
+/* =========================
+   LOADING / ERROR
+========================= */
+
+#loading {
+    color: #777;
+
+    text-align: center;
+
+    margin-top: 30vh;
+}
+
+#error {
+    color: #ff5555;
+
+    white-space: pre-wrap;
+}
+
+
+/* =========================
+   MOBILE
+========================= */
+
+@media (max-width: 600px) {
+
+    #game {
+        padding: 35px 20px 90px;
+    }
+
+    #content {
+        font-size: 18px;
+        line-height: 1.6;
+    }
+
+    .choice {
+        font-size: 18px;
+    }
+
+}
+
+</style>
+</head>
+
+
+<body>
+
+<div id="game">
+
+    <div id="loading">
+        Loading...
+    </div>
+
+    <div id="content"></div>
+
+    <div id="choices"></div>
+
+</div>
+
+
+<div id="controls">
+
+    <button
+        id="backButton"
+        onclick="goBack()">
+        Back
+    </button>
+
+    <button
+        onclick="saveGame()">
+        Save
+    </button>
+
+    <button
+        onclick="loadGame()">
+        Load
+    </button>
+
+    <button
+        onclick="restartGame()">
+        Restart
+    </button>
+
+</div>
+
+
+<audio id="music" loop></audio>
+
+
+<script>
+
+/* =========================================================
+   SETTINGS
+========================================================= */
+
+const SCENE_FOLDER = "scenes/";
+const MUSIC_FOLDER = "music/";
+const IMAGE_FOLDER = "Images/";
+
+const START_SCENE = "start.txt";
+
+const TYPING_SPEED = 25;
+
+const FADE_TIME = 800;
+
+
+/* =========================================================
+   GAME STATE
+========================================================= */
+
+let currentScene = START_SCENE;
+
+let currentMusic = null;
+
+let isTyping = false;
+
+let skipTyping = false;
+
+let sceneHistory = [];
+
+
+/* =========================================================
+   LOAD SCENE
+========================================================= */
+
+async function loadScene(
+    sceneName,
+    addToHistory = true
+) {
+
+    if (
+        addToHistory &&
+        currentScene &&
+        currentScene !== sceneName
+    ) {
+
+        sceneHistory.push(
+            currentScene
+        );
+
+    }
+
+
+    currentScene = sceneName;
+
+    skipTyping = false;
+
+    const content =
+        document.getElementById("content");
+
+    const choices =
+        document.getElementById("choices");
+
+    const loading =
+        document.getElementById("loading");
+
+
+    content.innerHTML = "";
+
+    choices.innerHTML = "";
+
+    loading.style.display = "block";
+
+    updateBackButton();
+
+
+    try {
+
+        const response = await fetch(
+            SCENE_FOLDER +
+            encodeURIComponent(sceneName)
+        );
+
+
+        if (!response.ok) {
+
+            throw new Error(
+                "Could not find scene: " +
+                sceneName
+            );
+
+        }
+
+
+        const text =
+            await response.text();
+
+
+        loading.style.display = "none";
+
+
+        await parseScene(text);
+
+
+    } catch (error) {
+
+        loading.style.display = "none";
+
+
+        content.innerHTML =
+            `<div id="error">
+                Error loading scene:
+
+                ${escapeHTML(error.message)}
+
+                Make sure the game is running through a web server.
+            </div>`;
+
+
+        console.error(error);
+
+    }
+
+}
+
+
+/* =========================================================
+   PARSE SCENE
+========================================================= */
+
+async function parseScene(text) {
+
+    const lines =
+        text
+        .replace(/\r/g, "")
+        .split("\n");
+
+
+    const content =
+        document.getElementById("content");
+
+
+    let choices = [];
+
+
+    for (let line of lines) {
+
+        const trimmed =
+            line.trim();
+
+
+        /* EMPTY LINE */
+
+        if (trimmed === "") {
+
+            const spacer =
+                document.createElement("div");
+
+            spacer.style.height = "10px";
+
+            content.appendChild(
+                spacer
+            );
+
+            continue;
+        }
+
+
+        /* MUSIC */
+
+        if (
+            trimmed
+            .toLowerCase()
+            .startsWith("@music")
+        ) {
+
+            const musicName =
+                trimmed
+                .substring(6)
+                .trim();
+
+
+            if (musicName) {
+
+                changeMusic(
+                    musicName
+                );
+
+            }
+
+
+            continue;
+        }
+
+
+        /* IMAGE */
+
+        if (
+            trimmed
+            .toLowerCase()
+            .startsWith("$image")
+        ) {
+
+            const imageName =
+                trimmed
+                .substring(6)
+                .trim();
+
+
+            if (imageName) {
+
+                addImage(
+                    imageName,
+                    content
+                );
+
+            }
+
+
+            continue;
+        }
+
+
+        /* OPTION */
+
+        if (trimmed.startsWith(">")) {
+
+            const option =
+                parseOption(trimmed);
+
+
+            if (option) {
+
+                choices.push(
+                    option
+                );
+
+            }
+
+
+            continue;
+        }
+
+
+        /* NORMAL TEXT */
+
+        await addText(
+            line,
+            content
+        );
+
+    }
+
+
+    displayChoices(
+        choices
+    );
+
+}
+
+
+/* =========================================================
+   TEXT
+========================================================= */
+
+function addText(
+    text,
+    container
+) {
+
+    return new Promise(
+        resolve => {
+
+            const element =
+                document.createElement(
+                    "div"
+                );
+
+
+            element.className =
+                "text-line";
+
+
+            container.appendChild(
+                element
+            );
+
+
+            typeText(
+                element,
+                text,
+                resolve
+            );
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   TYPING
+========================================================= */
+
+function typeText(
+    element,
+    text,
+    finished
+) {
+
+    let index = 0;
+
+    isTyping = true;
+
+
+    function type() {
+
+        if (skipTyping) {
+
+            element.textContent =
+                text;
+
+            isTyping = false;
+
+            finished();
+
+            return;
+        }
+
+
+        if (
+            index >= text.length
+        ) {
+
+            isTyping = false;
+
+            finished();
+
+            return;
+        }
+
+
+        element.textContent +=
+            text[index];
+
+
+        index++;
+
+
+        setTimeout(
+            type,
+            TYPING_SPEED
+        );
+
+    }
+
+
+    type();
+
+}
+
+
+/* =========================================================
+   IMAGE
+========================================================= */
+
+function addImage(
+    imageName,
+    container
+) {
+
+    const image =
+        document.createElement(
+            "img"
+        );
+
+
+    image.className =
+        "scene-image";
+
+
+    image.src =
+        IMAGE_FOLDER +
+        encodeURIComponent(
+            imageName
+        );
+
+
+    image.alt = "";
+
+
+    /*
+        Start invisible.
+        Once completely loaded,
+        add the "loaded" class.
+    */
+
+    image.onload =
+        function() {
+
+            requestAnimationFrame(
+                () => {
+
+                    image.classList.add(
+                        "loaded"
+                    );
+
+                }
+            );
+
+        };
+
+
+    image.onerror =
+        function() {
+
+            console.error(
+                "Image not found:",
+                imageName
+            );
+
+        };
+
+
+    container.appendChild(
+        image
+    );
+
+}
+
+
+/* =========================================================
+   OPTION PARSER
+========================================================= */
+
+function parseOption(line) {
+
+    const match =
+        line.match(
+            /^>\s*(.*?)\s*\(([^()]*)\)\s*$/
+        );
+
+
+    if (!match) {
+
+        console.warn(
+            "Invalid option:",
+            line
+        );
+
+        return null;
+
+    }
+
+
+    return {
+
+        text:
+            match[1].trim(),
+
+        scene:
+            match[2].trim()
+
+    };
+
+}
+
+
+/* =========================================================
+   DISPLAY OPTIONS
+========================================================= */
+
+function displayChoices(
+    choices
+) {
+
+    const container =
+        document.getElementById(
+            "choices"
+        );
+
+
+    container.innerHTML = "";
+
+
+    choices.forEach(
+        choice => {
+
+            const button =
+                document.createElement(
+                    "button"
+                );
+
+
+            button.className =
+                "choice";
+
+
+            button.textContent =
+                choice.text;
+
+
+            button.onclick =
+                function() {
+
+                    loadScene(
+                        choice.scene,
+                        true
+                    );
+
+                };
+
+
+            container.appendChild(
+                button
+            );
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   BACK
+========================================================= */
+
+function goBack() {
+
+    if (
+        sceneHistory.length === 0
+    ) {
+
+        return;
+
+    }
+
+
+    const previousScene =
+        sceneHistory.pop();
+
+
+    loadScene(
+        previousScene,
+        false
+    );
+
+}
+
+
+function updateBackButton() {
+
+    const button =
+        document.getElementById(
+            "backButton"
+        );
+
+
+    button.disabled =
+        sceneHistory.length === 0;
+
+}
+
+
+/* =========================================================
+   RESTART
+========================================================= */
+
+function restartGame() {
+
+    if (
+        !confirm(
+            "Restart the game from the beginning?"
+        )
+    ) {
+
+        return;
+
+    }
+
+
+    sceneHistory = [];
+
+
+    const audio =
+        document.getElementById(
+            "music"
+        );
+
+
+    audio.pause();
+
+    audio.currentTime = 0;
+
+    audio.src = "";
+
+
+    currentMusic = null;
+
+
+    loadScene(
+        START_SCENE,
+        false
+    );
+
+}
+
+
+/* =========================================================
+   MUSIC
+========================================================= */
+
+async function changeMusic(
+    musicName
+) {
+
+    /*
+        Same music continues.
+    */
+
+    if (
+        currentMusic === musicName
+    ) {
+
+        return;
+
+    }
+
+
+    const audio =
+        document.getElementById(
+            "music"
+        );
+
+
+    await fadeOut();
+
+
+    currentMusic =
+        musicName;
+
+
+    audio.src =
+        MUSIC_FOLDER +
+        encodeURIComponent(
+            musicName
+        );
+
+
+    try {
+
+        await audio.play();
+
+    } catch (error) {
+
+        console.log(
+            "Music waiting for user interaction."
+        );
+
+    }
+
+
+    fadeIn();
+
+}
+
+
+/* =========================================================
+   FADE OUT
+========================================================= */
+
+function fadeOut() {
+
+    return new Promise(
+        resolve => {
+
+            const audio =
+                document.getElementById(
+                    "music"
+                );
+
+
+            if (
+                audio.paused ||
+                audio.volume <= 0
+            ) {
+
+                audio.pause();
+
+                audio.volume = 0;
+
+                resolve();
+
+                return;
+
+            }
+
+
+            const steps = 20;
+
+            const interval =
+                FADE_TIME / steps;
+
+
+            let step = 0;
+
+
+            const timer =
+                setInterval(
+                    () => {
+
+                        step++;
+
+
+                        audio.volume =
+                            1 -
+                            (
+                                step /
+                                steps
+                            );
+
+
+                        if (
+                            step >= steps
+                        ) {
+
+                            clearInterval(
+                                timer
+                            );
+
+
+                            audio.pause();
+
+                            audio.volume = 0;
+
+
+                            resolve();
+
+                        }
+
+                    },
+                    interval
+                );
+
+        }
+    );
+
+}
+
+
+/* =========================================================
+   FADE IN
+========================================================= */
+
+function fadeIn() {
+
+    const audio =
+        document.getElementById(
+            "music"
+        );
+
+
+    audio.volume = 0;
+
+
+    const steps = 20;
+
+    const interval =
+        FADE_TIME / steps;
+
+
+    let step = 0;
+
+
+    const timer =
+        setInterval(
+            () => {
+
+                step++;
+
+
+                audio.volume =
+                    Math.min(
+                        step / steps,
+                        1
+                    );
+
+
+                if (
+                    step >= steps
+                ) {
+
+                    clearInterval(
+                        timer
+                    );
+
+                }
+
+            },
+            interval
+        );
+
+}
+
+
+/* =========================================================
+   SAVE
+========================================================= */
+
+function saveGame() {
+
+    const saveData = {
+
+        scene:
+            currentScene,
+
+        music:
+            currentMusic,
+
+        history:
+            sceneHistory
+
+    };
+
+
+    localStorage.setItem(
+        "textAdventureSave",
+        JSON.stringify(
+            saveData
+        )
+    );
+
+
+    alert(
+        "Game saved."
+    );
+
+}
+
+
+/* =========================================================
+   LOAD
+========================================================= */
+
+function loadGame() {
+
+    const data =
+        localStorage.getItem(
+            "textAdventureSave"
+        );
+
+
+    if (!data) {
+
+        alert(
+            "No save file found."
+        );
+
+        return;
+
+    }
+
+
+    try {
+
+        const saveData =
+            JSON.parse(data);
+
+
+        currentScene =
+            saveData.scene ||
+            START_SCENE;
+
+
+        currentMusic =
+            saveData.music ||
+            null;
+
+
+        sceneHistory =
+            saveData.history ||
+            [];
+
+
+        loadScene(
+            currentScene,
+            false
+        );
+
+
+    } catch (error) {
+
+        alert(
+            "Save file is corrupted."
+        );
+
+        console.error(
+            error
+        );
+
+    }
+
+}
+
+
+/* =========================================================
+   UTILITY
+========================================================= */
+
+function escapeHTML(text) {
+
+    return text
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+
+}
+
+
+/* =========================================================
+   START
+========================================================= */
+
+window.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        loadScene(
+            START_SCENE,
+            false
+        );
+
+    }
+);
+
+</script>
+
+</body>
+</html>
