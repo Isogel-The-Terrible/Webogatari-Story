@@ -1,7 +1,7 @@
 You saw a man right in front of you.
 He is looking at you like a maniac.
 
-@image_1.png
+@image image_1
 @music loop_1.mp3
 
 >"Who are you?" (scene_1.txt)
