@@ -2,7 +2,7 @@ The man slowly smiles.
 
 "You really don't remember me?"
 
-$image image_1.png
+@music loop_1.mp3
 
 He takes one step closer.
 
