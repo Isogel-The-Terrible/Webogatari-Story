@@ -251,6 +251,15 @@ const SCENE_FOLDER = "scenes/";
 const MUSIC_FOLDER = "music/";
 const IMAGE_FOLDER = "images/";
 
+/* List every music filename used by the game here. */
+const MUSIC_FILES = [
+    // "loop_1.mp3",
+    // "forest.mp3",
+    // "danger.mp3",
+];
+
+const MUSIC_CACHE_NAME = "text-adventure-music-v1";
+
 const START_SCENE = "start.txt";
 
 const TYPING_SPEED = 25;
@@ -265,6 +274,7 @@ const FADE_TIME = 800;
 let currentScene = START_SCENE;
 
 let currentMusic = null;
+let currentMusicURL = null;
 
 let isTyping = false;
 
@@ -839,6 +849,17 @@ function restartGame() {
     audio.src = "";
 
 
+    if (currentMusicURL) {
+
+        URL.revokeObjectURL(
+            currentMusicURL
+        );
+
+        currentMusicURL = null;
+
+    }
+
+
     currentMusic = null;
 
 
@@ -851,6 +872,125 @@ function restartGame() {
 
 
 /* =========================================================
+   MUSIC PRELOADING
+========================================================= */
+
+async function preloadMusic() {
+
+    if (!("caches" in window)) {
+        console.warn("Cache Storage is not supported.");
+        return;
+    }
+
+    if (MUSIC_FILES.length === 0) {
+        console.warn("Add your music filenames to MUSIC_FILES.");
+        return;
+    }
+
+    try {
+
+        const cache =
+            await caches.open(MUSIC_CACHE_NAME);
+
+        await Promise.all(
+            MUSIC_FILES.map(async musicName => {
+
+                const url =
+                    MUSIC_FOLDER +
+                    encodeURIComponent(musicName);
+
+                if (await cache.match(url)) {
+                    return;
+                }
+
+                try {
+
+                    const response =
+                        await fetch(url, {
+                            cache: "reload"
+                        });
+
+                    if (!response.ok) {
+                        throw new Error(
+                            "HTTP " + response.status
+                        );
+                    }
+
+                    await cache.put(
+                        url,
+                        response.clone()
+                    );
+
+                    console.log(
+                        "Music cached:",
+                        musicName
+                    );
+
+                } catch (error) {
+
+                    console.warn(
+                        "Could not preload:",
+                        musicName,
+                        error
+                    );
+
+                }
+
+            })
+        );
+
+        console.log("Music preloading finished.");
+
+    } catch (error) {
+
+        console.warn(
+            "Music cache unavailable:",
+            error
+        );
+
+    }
+
+}
+
+
+async function getMusicURL(musicName) {
+
+    const url =
+        MUSIC_FOLDER +
+        encodeURIComponent(musicName);
+
+    try {
+
+        const cache =
+            await caches.open(MUSIC_CACHE_NAME);
+
+        const cached =
+            await cache.match(url);
+
+        if (cached) {
+
+            const blob =
+                await cached.blob();
+
+            return URL.createObjectURL(blob);
+
+        }
+
+    } catch (error) {
+
+        console.warn(
+            "Could not read cached music:",
+            error
+        );
+
+    }
+
+    return url;
+
+}
+
+
+/* =========================================================
    MUSIC
 ========================================================= */
 
@@ -858,16 +998,10 @@ async function changeMusic(
     musicName
 ) {
 
-    /*
-        Same music continues.
-    */
-
     if (
         currentMusic === musicName
     ) {
-
         return;
-
     }
 
 
@@ -880,15 +1014,29 @@ async function changeMusic(
     await fadeOut();
 
 
+    if (currentMusicURL) {
+
+        URL.revokeObjectURL(
+            currentMusicURL
+        );
+
+        currentMusicURL = null;
+
+    }
+
+
     currentMusic =
         musicName;
 
 
-    audio.src =
-        MUSIC_FOLDER +
-        encodeURIComponent(
+    currentMusicURL =
+        await getMusicURL(
             musicName
         );
+
+
+    audio.src =
+        currentMusicURL;
 
 
     try {
@@ -1185,6 +1333,9 @@ function escapeHTML(text) {
 window.addEventListener(
     "DOMContentLoaded",
     () => {
+
+        /* Preload music immediately in the background. */
+        preloadMusic();
 
         loadScene(
             START_SCENE,
